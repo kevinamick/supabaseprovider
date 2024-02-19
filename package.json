@@ -1,0 +1,58 @@
+{
+  "name": "@kamick/supabaseprovider",
+  "version": "1.0.0",
+  "description": "A TipTap collboration provider using Supabase realtime",
+  "main": "index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kevinamick/supabaseprovider.git"
+  },
+  "keywords": [
+    "tiptap",
+    "supabase",
+    "collaboration"
+  ],
+  "author": "Kevin Amick",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/kevinamick/supabaseprovider/issues"
+  },
+  "homepage": "https://github.com/kevinamick/supabaseprovider#readme",
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "tsup": "^8.0.2",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.6",
+    "debounce": "^2.0.0",
+    "events": "^3.3.0",
+    "js-base64": "^3.7.6"
+  },
+  "peerDependencies": {
+    "y-protocols": "^1.0.6",
+    "yjs": "^13.6.10"
+  },
+  "tsup": {
+    "entry": [
+      "src/index.ts"
+    ],
+    "format": [
+      "cjs",
+      "esm"
+    ],
+    "dts": true,
+    "splitting": false,
+    "sourcemap": true,
+    "clean": true
+  }
+}
