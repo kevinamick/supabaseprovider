@@ -111,6 +111,7 @@ class FakeQuery {
   private conflict: string | undefined
   private filters: [string, unknown][] = []
   private single = false
+  private returning = false
 
   constructor(
     private hub: FakeHub,
@@ -118,7 +119,8 @@ class FakeQuery {
   ) {}
 
   select(_cols?: string): this {
-    this.op = 'select'
+    if (this.op === 'select') return this
+    this.returning = true // RETURNING on an insert/update
     return this
   }
   upsert(row: Record<string, unknown>, opts?: { onConflict?: string }): this {
@@ -156,8 +158,14 @@ class FakeQuery {
         return { data: null, error: null }
       }
       case 'update': {
-        for (const [k, r] of table) if (matches(r)) table.set(k, { ...r, ...this.row })
-        return { data: null, error: null }
+        const updated: Record<string, unknown>[] = []
+        for (const [k, r] of table) {
+          if (!matches(r)) continue
+          const next = { ...r, ...this.row }
+          table.set(k, next)
+          updated.push(next)
+        }
+        return { data: this.returning ? updated : null, error: null }
       }
     }
   }

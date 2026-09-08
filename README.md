@@ -69,6 +69,7 @@ provider.destroy()
 | `persistMode` | `upsert` | `update` only updates an existing row. Use it when RLS requires the app to create rows. |
 | `extraRow` | – | Extra columns written on upsert, e.g. `{ owner_id }`. |
 | `load` / `save` | – | Replace the built-in storage entirely. |
+| `persist` | `true` | Set `false` for read-only clients so they never write. |
 | `channelPrefix` | `yjs:` | Realtime topic prefix. |
 | `privateChannel` | `false` | Use a private channel authorized by `realtime.messages` policies. |
 | `saveDebounceMs` | `1500` | Debounce window for persisting. |
@@ -105,6 +106,10 @@ provider.on('error', ({ error, context }) => {}) // 'load' | 'save' | 'channel' 
 ### Storage format
 
 The full Yjs state (`Y.encodeStateAsUpdate`) is stored base64-encoded in a `text` column. That keeps the schema portable and readable from any client. For very large documents consider a `bytea` column via the `load`/`save` hooks.
+
+### Node and other non-browser clients
+
+In the browser, supabase-js forwards the signed-in user's token to Realtime automatically. In Node (bots, tests, workers) call `await supabase.realtime.setAuth(session.access_token)` after signing in, otherwise private channels reject the join.
 
 ### Security
 

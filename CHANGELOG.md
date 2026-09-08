@@ -11,7 +11,9 @@ Production release. Breaking: new flat options object (see README "Migrating fro
 - Automatic reconnect with exponential backoff.
 - Chunking for payloads above the broadcast size limit.
 - Private channel support and example `realtime.messages` policies.
-- `persistMode: 'update'`, `extraRow`, `schema`, and `load`/`save` hooks.
+- `persistMode: 'update'`, `extraRow`, `schema`, `persist`, and `load`/`save` hooks.
+- Update-mode saves verify a row was written, so RLS denials surface as errors instead of silent no-ops.
+- `destroy()` lets the awareness goodbye leave the socket before closing the channel, and peers answer `sync-request` with their awareness so newcomers see cursors immediately.
 - Typed events; dropped the `events`, `debounce`, and `js-base64` dependencies.
 - Test suite against an in-memory Realtime simulator.
 

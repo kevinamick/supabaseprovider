@@ -194,6 +194,28 @@ describe('SupabaseProvider', () => {
     expect(hub.sent.length).toBe(count)
   })
 
+  it('reports an error when update mode matches no row (RLS or missing row)', async () => {
+    const hub = new FakeHub()
+    const p = make(hub, 'missing', { persistMode: 'update' })
+    await waitFor(() => p.synced)
+    const errors: string[] = []
+    p.on('error', ({ error }) => errors.push(error.message))
+    p.document.getText('t').insert(0, 'x')
+    await waitFor(() => errors.length > 0)
+    expect(errors[0]).toMatch(/no row updated/)
+  })
+
+  it('never writes when persist is false', async () => {
+    const hub = new FakeHub()
+    const viewer = make(hub, 'doc-1', { persist: false })
+    await waitFor(() => viewer.synced)
+    viewer.document.getText('t').insert(0, 'view')
+    await viewer.flush()
+    await sleep(60)
+    expect(hub.table('documents').size).toBe(0)
+    expect(viewer.hasUnsavedChanges).toBe(false)
+  })
+
   it('flush() persists immediately', async () => {
     const hub = new FakeHub()
     const a = make(hub, 'doc-1', { saveDebounceMs: 10_000 })

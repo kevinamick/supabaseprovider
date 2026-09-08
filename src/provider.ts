@@ -53,6 +53,8 @@ export interface SupabaseProviderOptions {
   load?: () => Promise<Uint8Array | null>
   /** Override how state is stored. */
   save?: (state: Uint8Array) => Promise<void>
+  /** Persist the document to the database. Set `false` for read-only clients (viewers) so they never write. Default `true`. */
+  persist?: boolean
   /** Prefix for the Realtime topic. Default `yjs:`. */
   channelPrefix?: string
   /** Use a private channel authorized by RLS policies on `realtime.messages`. Default `false`. */
@@ -87,6 +89,7 @@ const DEFAULTS = {
   chunkSize: 200_000,
   autoConnect: true,
   maxReconnectDelayMs: 30_000,
+  persist: true,
 }
 
 /**
@@ -120,6 +123,7 @@ export class SupabaseProvider extends TypedEmitter<SupabaseProviderEvents> {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
 
   private pendingUpdates: Uint8Array[] = []
+  private lastSend: Promise<unknown> | null = null
   private chunks = new Map<string, { event: string; parts: (string | undefined)[]; received: number; n: number }>()
 
   constructor(supabase: SupabaseClient, options: SupabaseProviderOptions) {
@@ -232,9 +236,11 @@ export class SupabaseProvider extends TypedEmitter<SupabaseProviderEvents> {
   destroy(): void {
     if (this.destroyed) return
     this.destroyed = true
-    // Tell peers we're gone before the channel closes.
+    this.shouldConnect = false
+    this.clearReconnectTimer()
+    this.stopHeartbeat()
+    // Tell peers we're gone. This queues a broadcast on the still-open channel.
     removeAwarenessStates(this.awareness, [this.document.clientID], 'provider destroy')
-    this.disconnect()
     void this.flush()
     this.document.off('update', this.handleDocumentUpdate)
     this.awareness.off('update', this.handleAwarenessUpdate)
@@ -242,7 +248,13 @@ export class SupabaseProvider extends TypedEmitter<SupabaseProviderEvents> {
       window.removeEventListener('beforeunload', this.handleUnload)
       window.removeEventListener('pagehide', this.handleUnload)
     }
-    this.removeAllListeners()
+    // Give the goodbye message a moment to leave the socket before closing the channel.
+    const goodbye = this.lastSend ?? Promise.resolve()
+    void Promise.race([goodbye.catch(() => undefined), new Promise((r) => setTimeout(r, 300))]).then(() => {
+      this.teardownChannel()
+      this.setStatus('disconnected')
+      this.removeAllListeners()
+    })
   }
 
   private async onSubscribed(): Promise<void> {
@@ -323,8 +335,10 @@ export class SupabaseProvider extends TypedEmitter<SupabaseProviderEvents> {
   // ---------------------------------------------------------------------------
 
   private handleDocumentUpdate = (update: Uint8Array, origin: unknown): void => {
-    this.dirty = true
-    this.scheduleSave()
+    if (this.options.persist) {
+      this.dirty = true
+      this.scheduleSave()
+    }
     if (origin === this) return // came from a peer or the database
     if (this.status === 'connected' && this.channel) {
       this.send('update', { u: toBase64(update) } satisfies UpdatePayload)
@@ -351,6 +365,7 @@ export class SupabaseProvider extends TypedEmitter<SupabaseProviderEvents> {
           const { sv, from } = payload as SyncRequestPayload
           if (from === this.document.clientID) return
           const diff = Y.encodeStateAsUpdate(this.document, fromBase64(sv))
+          this.broadcastLocalAwareness()
           this.send('sync-reply', {
             to: from,
             from: this.document.clientID,
@@ -433,7 +448,7 @@ export class SupabaseProvider extends TypedEmitter<SupabaseProviderEvents> {
       // A write is in flight; run again afterwards if anything changed meanwhile.
       return this.savePromise.then(() => (this.dirty ? this.save() : undefined))
     }
-    if (!this.dirty) return Promise.resolve()
+    if (!this.dirty || !this.options.persist) return Promise.resolve()
     this.dirty = false
     const state = Y.encodeStateAsUpdate(this.document)
     this.savePromise = this.storeState(state)
@@ -481,8 +496,12 @@ export class SupabaseProvider extends TypedEmitter<SupabaseProviderEvents> {
     const { nameColumn, contentColumn, name, persistMode, onConflict, extraRow } = this.options
     const encoded = toBase64(state)
     if (persistMode === 'update') {
-      const { error } = await this.table().update({ [contentColumn]: encoded }).eq(nameColumn, name)
+      const { data, error } = await this.table().update({ [contentColumn]: encoded }).eq(nameColumn, name).select(nameColumn)
       if (error) throw new Error(`save failed: ${error.message}`)
+      // With RLS, an update the caller isn't allowed to make matches zero rows instead of erroring.
+      if (!data || (data as unknown[]).length === 0) {
+        throw new Error('save failed: no row updated (row missing or not permitted by RLS)')
+      }
       return
     }
     const { error } = await this.table().upsert(
@@ -501,14 +520,14 @@ export class SupabaseProvider extends TypedEmitter<SupabaseProviderEvents> {
     if (!channel) return
     const serialized = JSON.stringify(payload)
     if (serialized.length <= this.options.chunkSize) {
-      void channel.send({ type: 'broadcast', event, payload })
+      this.lastSend = channel.send({ type: 'broadcast', event, payload })
       return
     }
     const id = `${this.document.clientID}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const n = Math.ceil(serialized.length / this.options.chunkSize)
     for (let i = 0; i < n; i++) {
       const part = serialized.slice(i * this.options.chunkSize, (i + 1) * this.options.chunkSize)
-      void channel.send({ type: 'broadcast', event: 'chunk', payload: { id, event, i, n, part } satisfies ChunkPayload })
+      this.lastSend = channel.send({ type: 'broadcast', event: 'chunk', payload: { id, event, i, n, part } satisfies ChunkPayload })
     }
   }
 
