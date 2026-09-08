@@ -1,176 +1,141 @@
-<!-- Improved compatibility of back to top link: See: https://github.com/othneildrew/Best-README-Template/pull/73 -->
-<a name="readme-top"></a>
-<!--
-*** Thanks for checking out the Best-README-Template. If you have a suggestion
-*** that would make this better, please fork the repo and create a pull request
-*** or simply open an issue with the tag "enhancement".
-*** Don't forget to give the project a star!
-*** Thanks again! Now go create something AMAZING! :D
--->
+# @kamick/supabaseprovider
 
+Production-ready [Yjs](https://yjs.dev) provider for [Supabase Realtime](https://supabase.com/docs/guides/realtime). Drop-in collaboration for [TipTap](https://tiptap.dev), ProseMirror, and any other Yjs-backed editor, with no extra server to run.
 
+- **Realtime sync** over Supabase broadcast: incremental updates, not full-document blasts.
+- **Peer sync protocol** so clients that were offline or joined late reconcile automatically.
+- **Persistence** to a Postgres table (debounced, retried, flushed on unload). Or plug in your own `load`/`save`.
+- **Awareness** (cursors, presence) with heartbeat and clean removal on disconnect.
+- **Auto-reconnect** with exponential backoff.
+- **Large-payload chunking** so big documents don't exceed the broadcast size limit.
+- **Private channels** authorized by RLS on `realtime.messages`.
+- Typed events. Zero runtime dependencies beyond `lib0` (already pulled in by Yjs).
 
-<!-- PROJECT SHIELDS -->
-<!--
-*** I'm using markdown "reference style" links for readability.
-*** Reference links are enclosed in brackets [ ] instead of parentheses ( ).
-*** See the bottom of this document for the declaration of the reference variables
-*** for contributors-url, forks-url, etc. This is an optional, concise syntax you may use.
-*** https://www.markdownguide.org/basic-syntax/#reference-style-links
--->
-[![Forks][forks-shield]][forks-url]
-[![Stargazers][stars-shield]][stars-url]
-[![Issues][issues-shield]][issues-url]
-[![MIT License][license-shield]][license-url]
+Want a complete Next.js app with auth, sharing, RLS, and presence UI on top of this? See the [Supabase Collab Kit](https://github.com/kevinamick/supabaseprovider#kit).
 
-<br />
+## Install
 
-<!-- TABLE OF CONTENTS -->
-<details>
-  <summary>Table of Contents</summary>
-  <ol>
-    <li>
-      <a href="#about-the-project">About The Project</a>
-    </li>
-    <li><a href="#usage">Usage</a></li>
-    <li><a href="#roadmap">Roadmap</a></li>
-    <li><a href="#contributing">Contributing</a></li>
-    <li><a href="#license">License</a></li>
-    <li><a href="#contact">Contact</a></li>
-  </ol>
-</details>
-
-
-
-<!-- ABOUT THE PROJECT -->
-## About The Project
-
-Easily set up collaborative editing with Supabase Realtime! Built with [YJS](https://docs.yjs.dev/).
-
-Not recommended for production use in its current state. 
-
-Contributors welcome!
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-<!-- USAGE EXAMPLES -->
-## Usage
-
-```json
-"@kamick/supabaseprovider": "^0.0.2",
+```sh
+npm install @kamick/supabaseprovider yjs y-protocols @supabase/supabase-js
 ```
 
-Input: 
-```typescript
-export interface SupabaseProviderConfiguration {
-    /**
-    * The identifier/name of your document
-    */
-    name: string;
-    /**
-     * The actual Y.js document
-     */
-    document: Y.Doc;
-    /**
-     * The awareness instance
-     */
-    awareness?: Awareness;
-    /**
-     * Details about the database to connect to
-     */
-    databaseDetails: {
-        schema: string,
-        table: string,
-        updateColumns: { name: string, content: string },
-        conflictColumns: string
-    }
-}
+## Database
+
+Run [`sql/schema.sql`](./sql/schema.sql) in the Supabase SQL editor (or add it as a migration). It creates a `documents` table with `name` and `content` columns plus example RLS policies. Every name is configurable.
+
+## Usage with TipTap
+
+```ts
+import { createClient } from '@supabase/supabase-js'
+import { SupabaseProvider } from '@kamick/supabaseprovider'
+import { useEditor } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import Collaboration from '@tiptap/extension-collaboration'
+import CollaborationCaret from '@tiptap/extension-collaboration-caret'
+import * as Y from 'yjs'
+
+const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!)
+
+const doc = new Y.Doc()
+const provider = new SupabaseProvider(supabase, { name: 'my-document-id', document: doc })
+
+const editor = useEditor({
+  extensions: [
+    StarterKit.configure({ undoRedo: false }), // Yjs handles history
+    Collaboration.configure({ document: doc }),
+    CollaborationCaret.configure({
+      provider,
+      user: { name: 'Ada', color: '#f783ac' },
+    }),
+  ],
+})
+
+// Later
+provider.destroy()
 ```
 
-Example usage with React:
-```javascript
-const supabase = createClientComponentClient<Database>();
-const router = useRouter();
-const doc = useMemo(() => new Y.Doc(), []);
-const provider = 
-    useMemo(() => new SupabaseProvider(supabase, {
-            name: documentName,
-            document: doc,
-            databaseDetails: {
-            schema: {schema},
-            table: {table},
-            updateColumns: { name: {column_name}, content: {column_content} },
-            conflictColumns: {conflict_columns_comma_concat},
-            },
-        }), [doc, documentName, supabase]);
+## Options
 
-return <TipTapEditor doc={doc} provider={provider} user={user} router={router} />;
+| Option | Default | Description |
+| --- | --- | --- |
+| `name` | required | Document id. Row key and Realtime topic suffix. |
+| `document` | `new Y.Doc()` | Y.Doc to bind. |
+| `awareness` | `new Awareness(doc)` | Awareness instance. |
+| `table` | `documents` | Table holding documents. |
+| `schema` | client default | Postgres schema of `table`. |
+| `nameColumn` | `name` | Column with the document id. |
+| `contentColumn` | `content` | Column with the base64 Yjs state. |
+| `onConflict` | `nameColumn` | `ON CONFLICT` target for upserts. |
+| `persistMode` | `upsert` | `update` only updates an existing row. Use it when RLS requires the app to create rows. |
+| `extraRow` | – | Extra columns written on upsert, e.g. `{ owner_id }`. |
+| `load` / `save` | – | Replace the built-in storage entirely. |
+| `channelPrefix` | `yjs:` | Realtime topic prefix. |
+| `privateChannel` | `false` | Use a private channel authorized by `realtime.messages` policies. |
+| `saveDebounceMs` | `1500` | Debounce window for persisting. |
+| `awarenessHeartbeatMs` | `15000` | Re-broadcast interval for local awareness. `0` disables. |
+| `chunkSize` | `200000` | Split broadcast payloads above this many characters. |
+| `autoConnect` | `true` | Connect in the constructor. |
+| `maxReconnectDelayMs` | `30000` | Cap for reconnect backoff. |
 
+## Events
+
+```ts
+provider.on('status', ({ status }) => {}) // 'connecting' | 'connected' | 'disconnected'
+provider.on('synced', ({ synced }) => {}) // initial load + peer sync done
+provider.on('save', ({ version }) => {})  // persisted to the database
+provider.on('error', ({ error, context }) => {}) // 'load' | 'save' | 'channel' | 'message'
 ```
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+`provider.status`, `provider.synced`, and `provider.hasUnsavedChanges` expose the same state synchronously. `on()` returns an unsubscribe function.
 
+## Methods
 
+- `connect()` / `disconnect()`: manage the Realtime channel.
+- `flush()`: persist pending changes now. Resolves when the write finishes.
+- `destroy()`: disconnect, flush, release listeners. Call it in your component cleanup.
 
-<!-- ROADMAP -->
-## Roadmap
+## How it works
 
-- [ ] Add Changelog
-- [ ] Add Additional Templates w/ Examples
-- [ ] Add Testing
-- [ ] Production ready
+1. On connect the provider subscribes to `yjs:<name>`, loads the saved state from Postgres, and applies it.
+2. It broadcasts a `sync-request` carrying its state vector. Each peer answers with the diff the requester is missing, plus its own state vector, and the requester sends back anything the peer lacks. Divergent clients converge in one round trip.
+3. Local edits are broadcast as incremental Yjs updates. Remote updates are applied with the provider as origin, so they are never re-broadcast.
+4. Every change marks the document dirty. After `saveDebounceMs` the full state is upserted. Failures are retried with backoff and surfaced via the `error` event.
+5. Awareness updates are broadcast immediately and re-sent every `awarenessHeartbeatMs`, so peers don't expire them. Unload and `destroy()` remove the local state for everyone.
 
-See the [open issues](https://github.com/kevinamick/supabaseprovider/issues) for a full list of proposed features (and known issues).
+### Storage format
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+The full Yjs state (`Y.encodeStateAsUpdate`) is stored base64-encoded in a `text` column. That keeps the schema portable and readable from any client. For very large documents consider a `bytea` column via the `load`/`save` hooks.
 
+### Security
 
+Use RLS on the documents table to control who can read and write. For Realtime, set `privateChannel: true` and add policies on `realtime.messages` (see `sql/schema.sql`). Without private channels, anyone with your anon key can subscribe to a topic.
 
-<!-- CONTRIBUTING -->
-## Contributing
+## Kit
 
-Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+The **Supabase Collab Kit** is a complete Next.js 16 starter built on this provider: Supabase auth, a documents list, sharing by email, owner/editor/viewer roles enforced by RLS and private Realtime channels, presence avatars, a TipTap toolbar, and a Vercel deploy guide.
 
-If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
-Don't forget to give the project a star! Thanks again!
+## Migrating from 1.x
 
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+The constructor now takes flat options instead of `databaseDetails`:
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+```ts
+// 1.x
+new SupabaseProvider(supabase, { name, document, databaseDetails: { schema: 'public', table: 'documents', updateColumns: { name: 'name', content: 'content' }, conflictColumns: 'name' } })
+// 2.x
+new SupabaseProvider(supabase, { name, document, table: 'documents', nameColumn: 'name', contentColumn: 'content' })
+```
 
+`status` events now emit `{ status }` instead of an array. Updates are incremental, so 1.x and 2.x clients should not share a document at the same time. Stored data is compatible.
 
+## Development
 
-<!-- LICENSE -->
+```sh
+pnpm install
+pnpm test        # vitest against an in-memory Realtime simulator
+pnpm typecheck
+pnpm build
+```
+
 ## License
 
-Distributed under the MIT License. See `LICENSE.txt` for more information.
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-<!-- CONTACT -->
-## Contact
-
-Kevin Amick - [@kevinamick](https://twitter.com/kevinamick) - kevinamick81@gmail.com
-
-Project Link: [https://github.com/kevinamick/supabaseprovider](https://github.com/your_username/repo_name)
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-<!-- MARKDOWN LINKS & IMAGES -->
-<!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
-[forks-shield]: https://img.shields.io/github/forks/kevinamick/supabaseprovider
-[forks-url]: https://github.com/kevinamick/supabaseprovider/network/members
-[stars-shield]: https://img.shields.io/github/stars/kevinamick/supabaseprovider
-[stars-url]: https://github.com/kevinamick/supabaseprovider/stargazers
-[issues-shield]: https://img.shields.io/github/issues/kevinamick/supabaseprovider
-[issues-url]: https://github.com/kevinamick/supabaseprovider/issues
-[license-shield]: https://img.shields.io/github/license/kevinamick/supabaseprovider
-[license-url]: https://github.com/kevinamick/supabaseprovider/blob/main/LICENSE.txt
-[linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
-[linkedin-url]: https://linkedin.com/in/kevinamick
+MIT © Kevin Amick

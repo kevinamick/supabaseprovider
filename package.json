@@ -1,25 +1,45 @@
 {
   "name": "@kamick/supabaseprovider",
-  "version": "1.0.0",
-  "description": "A TipTap collboration provider using Supabase realtime",
-  "main": "index.js",
-  "module": "./dist/index.mjs",
+  "version": "2.0.0",
+  "description": "Production-ready Yjs collaboration provider for Supabase Realtime. Works with TipTap, ProseMirror, and any Yjs editor.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
   "files": [
-    "dist"
+    "dist",
+    "sql",
+    "README.md",
+    "LICENSE.txt"
   ],
+  "sideEffects": false,
   "scripts": {
     "build": "tsup",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kevinamick/supabaseprovider.git"
   },
   "keywords": [
+    "yjs",
+    "y-provider",
     "tiptap",
+    "prosemirror",
     "supabase",
-    "collaboration"
+    "realtime",
+    "collaboration",
+    "crdt"
   ],
   "author": "Kevin Amick",
   "license": "MIT",
@@ -27,20 +47,24 @@
     "url": "https://github.com/kevinamick/supabaseprovider/issues"
   },
   "homepage": "https://github.com/kevinamick/supabaseprovider#readme",
-  "devDependencies": {
-    "ts-node": "^10.9.2",
-    "tsup": "^8.0.2",
-    "typescript": "^5.3.3"
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.6",
-    "debounce": "^2.0.0",
-    "events": "^3.3.0",
-    "js-base64": "^3.7.6"
+    "lib0": "^0.2.99"
   },
   "peerDependencies": {
+    "@supabase/supabase-js": "^2.39.0",
     "y-protocols": "^1.0.6",
     "yjs": "^13.6.10"
+  },
+  "devDependencies": {
+    "@supabase/supabase-js": "^2.116.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.32"
   },
   "tsup": {
     "entry": [
@@ -53,6 +77,12 @@
     "dts": true,
     "splitting": false,
     "sourcemap": true,
-    "clean": true
+    "clean": true,
+    "target": "es2020"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }
