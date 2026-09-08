@@ -11,7 +11,7 @@ Production-ready [Yjs](https://yjs.dev) provider for [Supabase Realtime](https:/
 - **Private channels** authorized by RLS on `realtime.messages`.
 - Typed events. Zero runtime dependencies beyond `lib0` (already pulled in by Yjs).
 
-Want a complete Next.js app with auth, sharing, RLS, and presence UI on top of this? See the [Supabase Collab Kit](https://github.com/kevinamick/supabaseprovider#kit).
+Want a complete Next.js app with auth, sharing, RLS, and presence UI on top of this? Get the [Supabase Collab Kit](https://kevinamick.gumroad.com/l/supabase-collab-kit).
 
 ## Install
 
@@ -117,7 +117,7 @@ Use RLS on the documents table to control who can read and write. For Realtime, 
 
 ## Kit
 
-The **Supabase Collab Kit** is a complete Next.js 16 starter built on this provider: Supabase auth, a documents list, sharing by email, owner/editor/viewer roles enforced by RLS and private Realtime channels, presence avatars, a TipTap toolbar, and a Vercel deploy guide.
+The [**Supabase Collab Kit**](https://kevinamick.gumroad.com/l/supabase-collab-kit) is a complete Next.js 16 starter built on this provider: Supabase auth, a documents list, sharing by email, owner/editor/viewer roles enforced by RLS and private Realtime channels, presence avatars, a TipTap toolbar, a Playwright end-to-end suite, and a Vercel deploy guide. One-time purchase, unlimited projects.
 
 ## Migrating from 1.x
 
